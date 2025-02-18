@@ -37,7 +37,7 @@ class MainRateProvider implements RateProvider
     private function fetchRateFromAPI(string $baseCurrency, string $currency): array
     {
         try {
-            $response = (new Client())->get("https://api.exchangeratesapi.io/latest", [
+            $response = (new Client())->get("https://api.apilayer.com/exchangerates_data/latest", [
                     'query'   => [
                             'base'    => $baseCurrency,
                             'symbols' => $this->commonCurrency($currency),

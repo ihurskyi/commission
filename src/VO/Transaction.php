@@ -28,7 +28,7 @@ class Transaction
 
         $this->bin      = $data['bin'];
         $this->amount   = (float) $data['amount'];
-        $this->currency = $data['currency'];
+        $this->currency = strtoupper($data['currency']);
     }
 
     public function getBin(): string
