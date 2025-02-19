@@ -8,24 +8,28 @@ namespace App;
 use App\Bin\BinProvider;
 use App\Commission\CommissionCalculator;
 use App\Common\Reader;
-use App\Rate\RateProvider;
+use App\Currency\CurrencyExchanger;
 use App\VO\Transaction;
 
 class App
 {
     private BinProvider  $binProvider;
-    private RateProvider $rateProvider;
+    private CurrencyExchanger $currencyExchanger;
 
     private Reader $reader;
 
     private string $baseCurrency;
 
-    public function __construct(BinProvider $binProvider, RateProvider $rateProvider, Reader $reader, string $baseCurrency = 'EUR')
-    {
-        $this->binProvider  = $binProvider;
-        $this->rateProvider = $rateProvider;
-        $this->reader       = $reader;
-        $this->baseCurrency = $baseCurrency;
+    public function __construct(
+            BinProvider $binProvider,
+            CurrencyExchanger $currencyExchanger,
+            Reader $reader,
+            string $baseCurrency = 'EUR'
+    ) {
+        $this->binProvider       = $binProvider;
+        $this->currencyExchanger = $currencyExchanger;
+        $this->reader            = $reader;
+        $this->baseCurrency      = $baseCurrency;
     }
 
     public function run(string $filePath): void
@@ -36,15 +40,13 @@ class App
                     continue;
                 }
 
-                $transaction = new Transaction($row);
-                $country     = $this->binProvider->fetchBin($transaction->getBin());
-
-                $rate = ($transaction->getCurrency() === $this->baseCurrency)
-                        ? 1.0
-                        : $this->rateProvider->fetchRate($this->baseCurrency, $transaction->getCurrency());
-
-                $amount               = $transaction->getAmount() / $rate;
-                $commissionCalculator = new CommissionCalculator($country);
+                $transaction          = new Transaction($row);
+                $amount               = $this->currencyExchanger->convert(
+                        $transaction->getAmount(),
+                        $transaction->getCurrency(),
+                        $this->baseCurrency
+                );
+                $commissionCalculator = new CommissionCalculator($this->binProvider->fetchBin($transaction->getBin()));
 
                 echo round($commissionCalculator->calculate($amount), 2) . PHP_EOL;
             }

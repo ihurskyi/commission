@@ -8,76 +8,86 @@ namespace tests;
 use App\App;
 use App\Bin\BinProvider;
 use App\Common\Reader;
+use App\Currency\CurrencyExchanger;
 use App\Rate\RateProvider;
 use Generator;
 use PHPUnit\Framework\TestCase;
 
 class AppTest extends TestCase
 {
-    public function testEUCountryRun()
+    private object $binProviderMock;
+    private object $currencyExchangerMock;
+    private object $readerMock;
+    private App    $app;
+
+    protected function setUp(): void
     {
-        // Capture output
-        ob_start();
+        $this->binProviderMock       = $this->createMock(BinProvider::class);
+        $this->currencyExchangerMock = $this->createMock(CurrencyExchanger::class);
+        $this->readerMock            = $this->createMock(Reader::class);
 
-        $app = new App(
-                $this->getMockBinProvider('DK'),
-                $this->getMockRateProvider(1.048817),
-                $this->getMockReader()
-        );
+        $this->app = new App($this->binProviderMock, $this->currencyExchangerMock, $this->readerMock);
+    }
 
-        $app->run('test-file.txt');
-
-        $output = ob_get_clean();
-
-        $this->assertEquals("0.95" . PHP_EOL . "0.5" . PHP_EOL, $output);
+    private function generateTransactions(array $transactions): Generator
+    {
+        foreach ($transactions as $transaction) {
+            yield $transaction;
+        }
     }
 
     public function testNonEUCountryRun()
     {
-        // Capture output
+        $mockTransactionJson = json_encode([
+                'bin'      => '45717360',
+                'amount'   => 100.00,
+                'currency' => 'USD',
+        ]);
+
+        $this->readerMock->method('read')->willReturn($this->generateTransactions([$mockTransactionJson]));
+        $this->binProviderMock->method('fetchBin')->willReturn('JP');
+        $this->currencyExchangerMock->method('convert')->willReturn(95.34);
+
         ob_start();
-
-        // Create App with mocks
-        $app = new App(
-                $this->getMockBinProvider('JP'),
-                $this->getMockRateProvider(1.048817),
-                $this->getMockReader()
-        );
-
-        $app->run('test-file.txt');
-
+        $this->app->run('file.txt');
         $output = ob_get_clean();
 
-        $this->assertEquals("1.91" . PHP_EOL . "1" . PHP_EOL, $output);
+        $this->assertEquals(1.91 . PHP_EOL, $output);
     }
 
-    private function getMockBinProvider(string $country): object
+    public function testEUCountryRun()
     {
-        $binProviderMock = $this->createMock(BinProvider::class);
-        $binProviderMock->method('fetchBin')->willReturn($country);
+        $mockTransactionJson = json_encode([
+                'bin'      => '516793',
+                'amount'   => 100.00,
+                'currency' => 'GBP',
+        ]);
 
-        return $binProviderMock;
+        $this->readerMock->method('read')->willReturn($this->generateTransactions([$mockTransactionJson]));
+        $this->binProviderMock->method('fetchBin')->willReturn('DK');
+        $this->currencyExchangerMock->method('convert')->willReturn(120.48);
+
+
+        ob_start();
+        $this->app->run('file.txt');
+        $output = ob_get_clean();
+
+        $this->assertEquals(1.2 . PHP_EOL, $output);
     }
 
-    private function getMockRateProvider(float $rate): object
+    public function testRunThrowsExceptionForMissingCurrencyField()
     {
-        $rateProviderMock = $this->createMock(RateProvider::class);
-        $rateProviderMock->method('fetchRate')->willReturn($rate);
+        $mockTransactionJson = json_encode([
+                'bin'    => '45717360',
+                'amount' => 100.50,
+        ]);
 
-        return $rateProviderMock;
-    }
+        $this->readerMock->method('read')->willReturn($this->generateTransactions([$mockTransactionJson]));
 
-    private function getMockReader(): object
-    {
-        $readerMock = $this->createMock(Reader::class);
-        $readerMock->method('read')->willReturn($this->mockFileReader());
+        ob_start();
+        $this->app->run('file.txt');
+        $output = ob_get_clean();
 
-        return $readerMock;
-    }
-
-    private function mockFileReader(): Generator
-    {
-        yield '{"bin":"45717360","amount":100.00,"currency":"USD"}';
-        yield '{"bin":"516793","amount":50.00,"currency":"EUR"}';
+        $this->assertStringContainsString('Missing required field: currency', $output);
     }
 }
